@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Bipolar Disorder OS</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#8B0000">
+<meta name="description" content="Bipolar Disorder OS — narrative horror game">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BD OS">
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+}
+html, body {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    font-family: 'Courier New', monospace;
+    color: #fff;
+    position: fixed;
+    top: 0;
+    left: 0;
+}
+#wrap {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    overflow: hidden;
+}
+#game {
+    display: block;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+#start {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 18px 36px;
+    font: bold 22px 'Courier New', monospace;
+    background: #8B0000;
+    color: #fff;
+    border: 3px solid #FF0000;
+    border-radius: 8px;
+    z-index: 100;
+    cursor: pointer;
+}
+#start:active { background: #FF0000; }
+#btnFs {
+    position: fixed;
+    top: 10px; right: 10px;
+    width: 44px; height: 44px;
+    background: rgba(255,0,0,0.4);
+    border: 2px solid #FF0000;
+    border-radius: 8px;
+    color: #fff;
+    font: bold 20px 'Courier New', monospace;
+    z-index: 50;
+    cursor: pointer;
+}
+#btnFs:active { background: rgba(255,0,0,0.9); }
+#btnH {
+    position: fixed;
+    bottom: 20px; right: 20px;
+    width: 72px; height: 72px;
+    background: rgba(255,0,0,0.4);
+    border: 3px solid #FF0000;
+    border-radius: 50%;
+    color: #fff;
+    font: bold 26px 'Courier New', monospace;
+    z-index: 50;
+    display: none;
+    cursor: pointer;
+}
+#btnH:active { background: rgba(255,0,0,0.9); }
+#dpad {
+    position: fixed;
+    bottom: 20px; left: 20px;
+    display: none;
+    z-index: 50;
+}
+#dpad .row {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+#dpad button {
+    width: 64px; height: 64px;
+    background: rgba(255,0,0,0.4);
+    border: 2px solid #FF0000;
+    border-radius: 12px;
+    color: #fff;
+    font: bold 24px 'Courier New', monospace;
+    touch-action: none;
+    cursor: pointer;
+}
+#dpad button:active { background: rgba(255,0,0,0.9); }
+#btnInstall {
+    position: fixed;
+    bottom: 20px; left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 24px;
+    font: bold 16px 'Courier New', monospace;
+    background: #8B0000;
+    color: #fff;
+    border: 3px solid #FF0000;
+    border-radius: 8px;
+    z-index: 60;
+    display: none;
+    cursor: pointer;
+}
+#btnInstall:active { background: #FF0000; }
+@media (max-width: 500px) {
+    #dpad button { width: 56px; height: 56px; font-size: 20px; }
+    #btnH { width: 60px; height: 60px; font-size: 22px; }
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+    <canvas id="game" width="640" height="480"></canvas>
+</div>
+
+<button id="btnFs">⛶</button>
+<button id="start">▶ START</button>
+<button id="btnInstall">⤓ INSTALL</button>
+
+<div id="dpad">
+    <div class="row"><button id="bU">▲</button></div>
+    <div class="row">
+        <button id="bL">◄</button>
+        <button id="bD">▼</button>
+        <button id="bR">►</button>
+    </div>
+</div>
+
+<button id="btnH">H</button>
+
+<script>
+(function(){
+'use strict';
+
+// ================================================================
+// КОНСТАНТЫ
+// ================================================================
+var SW = 640, SH = 480;
+var WW = 640, WH = 480;
+var FP_SHIFT = 12;
+var FP_ONE = 1 << FP_SHIFT;
+var CACHE_VERSION = 'bdos-v1'; // должен совпадать с sw.js
+
+// ================================================================
+// КАНВАС
+// ================================================================
+var canvas = document.getElementById('game');
+var ctx = canvas.getContext('2d');
+canvas.width = WW;
+canvas.height = WH;
+ctx.imageSmoothingEnabled = false;
+
+var bb = document.createElement('canvas');
+bb.width = SW;
+bb.height = SH;
+var bctx = bb.getContext('2d');
+var imgData = bctx.createImageData(SW, SH);
+var pixels = new Uint32Array(imgData.data.buffer);
+
+// ================================================================
+// АДАПТАЦИЯ ПОД ЭКРАН
+// ================================================================
+function fixCanvasSize() {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var gameAspect = WW / WH;
+    var screenAspect = w / h;
+    var cw, ch;
+    if (screenAspect > gameAspect) {
+        ch = h;
+        cw = Math.floor(h * gameAspect);
+    } else {
+        cw = w;
+        ch = Math.floor(w / gameAspect);
+    }
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+}
+fixCanvasSize();
+window.addEventListener('resize', fixCanvasSize);
+window.addEventListener('orientationchange', function() {
+    setTimeout(fixCanvasSize, 200);
+});
+
+// ================================================================
+// СОСТОЯНИЯ
+// ================================================================
+var Scene = { Desktop:0, LookBehind:1, Recall:2, Boss:3, Victory:4, GameOver:5 };
+var scene = Scene.Desktop;
+var blink = 0;
+var progress = 0;
+
+// ================================================================
+// DE CRYPT
+// ================================================================
+var dcStage = 0;
+var dcMsgs = [
+    "Hi, I'm your computer.\nYou remember me? ^_^\n\n[ Click NEXT to continue ]",
+    "I've been watching you.\nYou always close my windows.\nWhy do you hate me? :(\n\n[ Click NEXT to continue ]",
+    "I know you want to kill me.\nBut I won't let you.\nCome find me in WapValley...\n\n[ Click NEXT to continue ]"
+];
+
+// ================================================================
+// ИГРОК
+// ================================================================
+var pX = 1.5 * FP_ONE;
+var pY = 1.5 * FP_ONE;
+var pA = 0;
+var hasBottle = false;
+
+// ================================================================
+// МОНСТР
+// ================================================================
+var mX = 13 * FP_ONE, mY = 8 * FP_ONE;
+var mAlive = true;
+var MSPEED = Math.floor(FP_ONE / 24);
+
+// ================================================================
+// БУТЫЛКА
+// ================================================================
+var bX = 13 * FP_ONE, bY = 2 * FP_ONE;
+var bTaken = false;
+
+// ================================================================
+// КАРТА
+// ================================================================
+var map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,0,0,0,0,0,0,0,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1],
+    [1,0,0,0,0,0,1,1,0,0,0,0,0,1,0,1],
+    [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,0,0,0,0,0,0,0,0,0,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+var MW = 16, MH = 11;
+
+// ================================================================
+// ТАБЛИЦЫ
+// ================================================================
+var sinT = new Int32Array(1024);
+var cosT = new Int32Array(1024);
+for (var i = 0; i < 1024; i++) {
+    var rad = (i * Math.PI) / 512.0;
+    sinT[i] = Math.floor(Math.sin(rad) * FP_ONE);
+    cosT[i] = Math.floor(Math.cos(rad) * FP_ONE);
+}
+
+// ================================================================
+// Z-БУФЕР
+// ================================================================
+var zBuf = new Int32Array(SW);
+
+// ================================================================
+// ТЕКСТУРЫ
+// ================================================================
+var WTS = 64, STS = 64;
+var tex = { wall:null, monster:null, bottle:null };
+var texCache = {};
+
+function loadImg(src) {
+    return new Promise(function(resolve, reject){
+        var img = new Image();
+        img.onload = function(){ resolve(img); };
+        img.onerror = reject;
+        img.src = src;
+    });
+}
+
+function getPix(img, x, y) {
+    if (!img) return 0xFF880000;
+    var key = img.src;
+    if (!texCache[key]) {
+        var c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        var cx = c.getContext('2d');
+        cx.drawImage(img, 0, 0);
+        texCache[key] = cx.getImageData(0, 0, img.width, img.height);
+    }
+    var d = texCache[key].data;
+    var idx = (y * img.width + x) * 4;
+    var r = d[idx], g = d[idx+1], b = d[idx+2], a = d[idx+3];
+    return (a << 24) | (b << 16) | (g << 8) | r;
+}
+
+// ================================================================
+// УПРАВЛЕНИЕ
+// ================================================================
+var input = { f:false, b:false, l:false, r:false };
+
+// ================================================================
+// ИНТЕРФЕЙС
+// ================================================================
+var icons = {
+    glitch: {x:30, y:30, w:80, h:80},
+    task:   {x:150, y:30, w:80, h:80},
+    dcrypt: {x:30, y:150, w:80, h:80},
+    recall: {x:150, y:150, w:80, h:80},
+    wap:    {x:30, y:270, w:80, h:80}
+};
+
+var wins = {
+    task:   {x:100, y:80, w:440, h:320},
+    dcrypt: {x:120, y:90, w:400, h:300},
+    glitch: {x:140, y:100, w:360, h:260},
+    wap:    {x:130, y:95, w:380, h:270},
+    msg:    {x:120, y:150, w:400, h:180},
+    proc:   {x:120, y:190, w:260, h:30},
+    btn:    {x:270, y:330, w:80, h:30}
+};
+
+var wTask = false, wDC = false, wGlitch = false, wWap = false, wMsg = false;
+var msgText = "";
+
+// ================================================================
+// МУЗЫКА
+// ================================================================
+var music = {
+    playing: false,
+    started: false,
+    part: 0,
+    repeat: 0,
+    start: 0,
+    duration: 7000,
+    list: [
+        { file:'Music/part1.wav', repeat:2 },
+        { file:'Music/part2.wav', repeat:2 },
+        { file:'Music/part3.wav', repeat:-1 }
+    ],
+    audio: {},
+    current: null
+};
+
+function startBossMusic() {
+    if (music.started) return;
+    music.started = true;
+    music.playing = true;
+    music.part = 0;
+    music.repeat = 0;
+    playPart();
+}
+
+function stopMusic() {
+    music.playing = false;
+    if (music.current) {
+        music.current.pause();
+        music.current.currentTime = 0;
+        music.current = null;
+    }
+}
+
+function playPart() {
+    var part = music.list[music.part];
+    var audio = music.audio[part.file];
+
+    if (!audio) {
+        try {
+            audio = new Audio(part.file);
+            audio.preload = 'auto';
+            music.audio[part.file] = audio;
+
+            // Ленивое кэширование музыки в Service Worker
+            if ('caches' in window) {
+                caches.open(CACHE_VERSION).then(function(cache) {
+                    cache.add(part.file).catch(function(){});
+                });
+            }
+        } catch (e) {
+            return;
+        }
+    }
+
+    if (music.current) {
+        music.current.pause();
+        music.current.currentTime = 0;
+    }
+    audio.currentTime = 0;
+    audio.play().catch(function(){});
+    music.current = audio;
+    music.start = performance.now();
+}
+
+function updateMusic() {
+    if (!music.playing) return;
+    var elapsed = performance.now() - music.start;
+    if (elapsed < music.duration) return;
+    music.start = performance.now();
+    var part = music.list[music.part];
+    if (part.repeat === -1) { playPart(); return; }
+    music.repeat++;
+    if (music.repeat < part.repeat) { playPart(); }
+    else {
+        music.repeat = 0;
+        music.part++;
+        if (music.part >= music.list.length) music.part = 0;
+        playPart();
+    }
+}
+
+// ================================================================
+// ПОИСК СВОБОДНОЙ КЛЕТКИ
+// ================================================================
+function findFree(sx, sy) {
+    if (sx >= 1 && sx < MW-1 && sy >= 1 && sy < MH-1 && map[sy][sx] === 0) {
+        return { x: sx*FP_ONE + (FP_ONE/2), y: sy*FP_ONE + (FP_ONE/2) };
+    }
+    for (var r = 1; r < Math.max(MW, MH); r++) {
+        for (var dx = -r; dx <= r; dx++) {
+            for (var dy = -r; dy <= r; dy++) {
+                if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                var cx = sx+dx, cy = sy+dy;
+                if (cx >= 1 && cx < MW-1 && cy >= 1 && cy < MH-1 && map[cy][cx] === 0) {
+                    return { x: cx*FP_ONE + (FP_ONE/2), y: cy*FP_ONE + (FP_ONE/2) };
+                }
+            }
+        }
+    }
+    return { x: 8*FP_ONE, y: 5*FP_ONE };
+}
+
+function resetBoss() {
+    pX = 1*FP_ONE + (FP_ONE/2);
+    pY = 1*FP_ONE + (FP_ONE/2);
+    pA = 0;
+    hasBottle = false;
+    var ms = findFree(13, 8);
+    mX = ms.x; mY = ms.y; mAlive = true;
+    var bs = findFree(13, 2);
+    bX = bs.x; bY = bs.y; bTaken = false;
+    input.f = input.b = input.l = input.r = false;
+}
+
+// ================================================================
+// ЛОГИКА БОССФАЙТА
+// ================================================================
+function updateBoss() {
+    var moveSpeed = Math.floor(FP_ONE / 8);
+    var turnSpeed = 16;
+    if (input.l) pA = (pA - turnSpeed + 1024) % 1024;
+    if (input.r) pA = (pA + turnSpeed) % 1024;
+    var dx = (cosT[pA] * moveSpeed) >> FP_SHIFT;
+    var dy = (sinT[pA] * moveSpeed) >> FP_SHIFT;
+
+    if (input.f) {
+        var nx = pX + dx, ny = pY + dy;
+        if (map[pY >> FP_SHIFT][nx >> FP_SHIFT] === 0) pX = nx;
+        if (map[ny >> FP_SHIFT][pX >> FP_SHIFT] === 0) pY = ny;
+    }
+    if (input.b) {
+        var nx2 = pX - dx, ny2 = pY - dy;
+        if (map[pY >> FP_SHIFT][nx2 >> FP_SHIFT] === 0) pX = nx2;
+        if (map[ny2 >> FP_SHIFT][pX >> FP_SHIFT] === 0) pY = ny2;
+    }
+
+    if (mAlive) {
+        var mdx = pX - mX, mdy = pY - mY;
+        var dist = Math.abs(mdx) + Math.abs(mdy);
+        if (dist > FP_ONE/2) {
+            var stx = (mdx > 0) ? MSPEED : -MSPEED;
+            var sty = (mdy > 0) ? MSPEED : -MSPEED;
+            if (map[mY >> FP_SHIFT][(mX + stx) >> FP_SHIFT] === 0) mX += stx;
+            if (map[(mY + sty) >> FP_SHIFT][mX >> FP_SHIFT] === 0) mY += sty;
+        } else {
+            if (!hasBottle) { stopMusic(); scene = Scene.GameOver; return; }
+            else { mAlive = false; stopMusic(); scene = Scene.Victory; progress = 5; return; }
+        }
+    }
+
+    if (!bTaken) {
+        var bdx = pX - bX, bdy = pY - bY;
+        if (Math.abs(bdx) + Math.abs(bdy) < FP_ONE/2) { bTaken = true; hasBottle = true; }
+    }
+}
+
+// ================================================================
+// РЕНДЕР БОССФАЙТА
+// ================================================================
+function renderBoss() {
+    var sky = 0xFF280000, floor = 0xFF000000;
+    for (var i = 0; i < pixels.length; i++) {
+        pixels[i] = (i < pixels.length/2) ? sky : floor;
+    }
+
+    var fov = 170;
+    var sA = (pA - Math.floor(fov/2) + 1024) % 1024;
+
+    for (var x = 0; x < SW; x++) {
+        var rA = (sA + Math.floor(x * fov / SW)) % 1024;
+        var sinR = sinT[rA], cosR = cosT[rA];
+        var d = 0, hit = 0;
+        var curX = pX, curY = pY;
+        var step = Math.floor(FP_ONE / 16);
+        var maxDist = 24 * FP_ONE;
+
+        while (d < maxDist) {
+            curX += (cosR * step) >> FP_SHIFT;
+            curY += (sinR * step) >> FP_SHIFT;
+            d += step;
+            var tx = curX >> FP_SHIFT, ty = curY >> FP_SHIFT;
+            if (tx < 0 || tx >= MW || ty < 0 || ty >= MH) { hit = -1; break; }
+            if (map[ty][tx] > 0) { hit = map[ty][tx]; break; }
+        }
+
+        if (hit <= 0) {
+            zBuf[x] = maxDist;
+            continue;
+        }
+
+        var cA = (rA - pA + 1024) % 1024;
+        d = (d * cosT[cA]) >> FP_SHIFT;
+        if (d < FP_ONE/4) d = FP_ONE/4;
+        zBuf[x] = d;
+
+        var wH = Math.floor((FP_ONE * SH) / d);
+        var dS = Math.floor(SH/2 - wH/2);
+        var dE = Math.floor(SH/2 + wH/2);
+        if (dS < 0) dS = 0;
+        if (dE >= SH) dE = SH-1;
+
+        var cellX = curX >> FP_SHIFT;
+        var cellY = curY >> FP_SHIFT;
+        var fracX = curX - (cellX << FP_SHIFT);
+        var fracY = curY - (cellY << FP_SHIFT);
+        var wallHit = (fracX < fracY) ? fracX : fracY;
+        var tX = Math.floor((wallHit * WTS) / FP_ONE) & (WTS-1);
+
+        var tStep = Math.floor((WTS << 16) / wH);
+        var tPos = (dS - SH/2 + wH/2) * tStep;
+        var dark = d > 6 * FP_ONE;
+
+        for (var y = dS; y < dE; y++) {
+            var tY = (tPos >> 16) & (WTS-1);
+            tPos += tStep;
+            var col = tex.wall ? getPix(tex.wall, tX, tY) : 0xFF808080;
+            if (dark) {
+                var r = (col>>16)&0xFF, g = (col>>8)&0xFF, b = col&0xFF;
+                col = 0xFF000000 | ((r>>1)<<16) | ((g>>1)<<8) | (b>>1);
+            }
+            pixels[x + y*SW] = col;
+        }
+    }
+
+    if (!bTaken) renderSprite(bX, bY, 'bottle', 0.6);
+    if (mAlive) renderSprite(mX, mY, 'monster', 1.0);
+
+    bctx.putImageData(imgData, 0, 0);
+}
+
+function renderSprite(oX, oY, texName, scaleY) {
+    var sX = oX - pX, sY = oY - pY;
+    var tX = (cosT[pA] * sY - sinT[pA] * sX) >> FP_SHIFT;
+    var tY = (sinT[pA] * sY + cosT[pA] * sX) >> FP_SHIFT;
+    if (tY < FP_ONE/4) return;
+
+    var scrX = Math.floor(SW/2) + Math.floor((tX * SW) / tY);
+    var sprH = Math.abs(Math.floor((FP_ONE * SH) / tY));
+    sprH = Math.floor(sprH * scaleY);
+
+    var dSY = Math.floor(-sprH/2 + SH/2);
+    var dEY = dSY + sprH;
+    if (dSY < 0) dSY = 0;
+    if (dEY >= SH) dEY = SH-1;
+
+    var sprW = sprH;
+    var dSX = Math.floor(-sprW/2 + scrX);
+    var dEX = Math.floor(sprW/2 + scrX);
+    if (dSX < 0) dSX = 0;
+    if (dEX >= SW) dEX = SW-1;
+
+    var img = tex[texName];
+    var dark = tY > 6 * FP_ONE;
+
+    for (var stripe = dSX; stripe < dEX; stripe++) {
+        var tXs = Math.floor(((stripe - (-sprW/2 + scrX)) * STS) / sprW);
+        if (tXs < 0 || tXs >= STS) continue;
+        if (tY < zBuf[stripe]) {
+            for (var y = dSY; y < dEY; y++) {
+                var tYs = Math.floor(((y - dSY) * STS) / sprH);
+                if (tYs < 0 || tYs >= STS) continue;
+                var col = img ? getPix(img, tXs, tYs) : (texName === 'monster' ? 0xFFFF00FF : 0xFFFFFF00);
+                var a = (col>>24)&0xFF;
+                if (a > 128) {
+                    if (dark) {
+                        var r = (col>>16)&0xFF, g = (col>>8)&0xFF, b = col&0xFF;
+                        col = 0xFF000000 | ((r>>1)<<16) | ((g>>1)<<8) | (b>>1);
+                    }
+                    pixels[stripe + y*SW] = col;
+                }
+            }
+        }
+    }
+}
+
+// ================================================================
+// РАБОЧИЙ СТОЛ
+// ================================================================
+function drawDesktop() {
+    bctx.fillStyle = '#000';
+    bctx.fillRect(0, 0, SW, SH);
+
+    drawIcon(icons.glitch, '#8B0000', '#FF0000', '#$fa^4*!C');
+    if (progress >= 1) drawIcon(icons.task, '#800000', '#FF0000', 'Task');
+    if (progress >= 2) drawIcon(icons.dcrypt, '#800080', '#0000FF', 'DeCrypt');
+    if (progress >= 3) drawIcon(icons.wap, '#000080', '#FFA500', 'WapV');
+    if (progress >= 4) drawIcon(icons.recall, '#8B4513', '#FF0000', 'Recall');
+
+    if (wGlitch) drawWin(wins.glitch, '#FF0000', '#0000FF', '#$fa^4*!C.ERR');
+    if (wWap)    drawWin(wins.wap, '#00008B', '#00FFFF', 'WapValley');
+    if (wDC)     drawDCWin();
+    if (wTask)   drawTaskWin();
+    if (wMsg)    drawMsgWin();
+
+    bctx.fillStyle = '#888';
+    bctx.font = '10px "Courier New"';
+    bctx.fillText("Press 'H' to look behind", 10, 460);
+
+    ctx.drawImage(bb, 0, 0, WW, WH);
+}
+
+function drawIcon(r, bg, br, text) {
+    bctx.fillStyle = bg;
+    bctx.fillRect(r.x, r.y, r.w, r.h);
+    bctx.strokeStyle = br;
+    bctx.lineWidth = 2;
+    bctx.strokeRect(r.x, r.y, r.w, r.h);
+    bctx.fillStyle = '#FFF';
+    bctx.font = 'bold 10px "Courier New"';
+    bctx.fillText(text, r.x + 5, r.y + r.h/2);
+}
+
+function drawWin(r, bg, br, title) {
+    bctx.fillStyle = bg;
+    bctx.fillRect(r.x, r.y, r.w, r.h);
+    bctx.strokeStyle = br;
+    bctx.lineWidth = 2;
+    bctx.strokeRect(r.x, r.y, r.w, r.h);
+    bctx.fillStyle = '#0000FF';
+    bctx.fillRect(r.x + r.w - 30, r.y + 5, 25, 25);
+    bctx.fillStyle = '#FFF';
+    bctx.font = 'bold 14px "Courier New"';
+    bctx.fillText('X', r.x + r.w - 22, r.y + 22);
+    bctx.fillStyle = '#FFF';
+    bctx.font = 'bold 11px "Courier New"';
+    bctx.fillText(title, r.x + 10, r.y + 20);
+}
+
+function drawDCWin() {
+    var r = wins.dcrypt;
+    drawWin(r, '#FF0000', '#0000FF', 'DeCrypt Utility');
+    bctx.fillStyle = '#000';
+    bctx.fillRect(r.x + 15, r.y + 40, 370, 120);
+    bctx.strokeStyle = '#FF0000';
+    bctx.strokeRect(r.x + 15, r.y + 40, 370, 120);
+    var face = dcStage === 0 ? '^_^' : (dcStage === 1 ? '-_-' : '>_<');
+    bctx.fillStyle = '#00FF00';
+    bctx.font = 'bold 24px "Courier New"';
+    bctx.fillText(face, r.x + 175, r.y + 110);
+    bctx.fillStyle = '#FFF';
+    bctx.font = '11px "Courier New"';
+    if (dcStage < dcMsgs.length) {
+        var lines = dcMsgs[dcStage].split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            bctx.fillText(lines[i], r.x + 25, r.y + 155 + i*15);
+        }
+    }
+    var btn = wins.btn;
+    bctx.fillStyle = '#D3D3D3';
+    bctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+    bctx.strokeStyle = '#FF0000';
+    bctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+    bctx.fillStyle = '#000';
+    bctx.font = 'bold 11px "Courier New"';
+    bctx.fillText(dcStage < dcMsgs.length-1 ? 'NEXT' : 'REPLY', btn.x + 22, btn.y + 20);
+}
+
+function drawTaskWin() {
+    var r = wins.task;
+    drawWin(r, '#FF0000', '#0000FF', 'Task Manager');
+    bctx.fillStyle = '#FFF';
+    bctx.font = '11px "Courier New"';
+    bctx.fillText('Gogle.ERR         End Task', r.x + 20, r.y + 60);
+    bctx.fillText('Plesureroom.ERR   End Task', r.x + 20, r.y + 100);
+    var p = wins.proc;
+    bctx.fillStyle = '#8B0000';
+    bctx.fillRect(p.x, p.y, p.w, p.h);
+    bctx.strokeStyle = '#FFFF00';
+    bctx.strokeRect(p.x, p.y, p.w, p.h);
+    bctx.fillStyle = '#FFFF00';
+    bctx.fillText('Hackerapp.ERR    End Task', p.x + 10, p.y + 20);
+}
+
+function drawMsgWin() {
+    var r = wins.msg;
+    bctx.fillStyle = '#000';
+    bctx.fillRect(r.x, r.y, r.w, r.h);
+    bctx.strokeStyle = '#FF0000';
+    bctx.strokeRect(r.x, r.y, r.w, r.h);
+    bctx.fillStyle = '#FF0000';
+    bctx.font = 'bold 11px "Courier New"';
+    bctx.fillText('SYSTEM MESSAGE', r.x + 10, r.y + 25);
+    bctx.fillStyle = '#FFF';
+    bctx.font = '11px "Courier New"';
+    var lines = msgText.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+        bctx.fillText(lines[i], r.x + 15, r.y + 60 + i*15);
+    }
+    bctx.fillStyle = '#FFFF00';
+    bctx.fillText('[ Click to close ]', r.x + 140, r.y + 155);
+}
+
+// ================================================================
+// ДРУГИЕ СЦЕНЫ
+// ================================================================
+function drawLookBehind() {
+    bctx.fillStyle = '#2F4F4F';
+    bctx.fillRect(0, 0, SW, SH);
+    bctx.fillStyle = '#FF0000';
+    bctx.font = 'bold 14px "Courier New"';
+    bctx.fillText('[ LOOKING BEHIND YOU ]', 190, 200);
+    bctx.fillStyle = '#FFF';
+    bctx.font = '11px "Courier New"';
+    bctx.fillText('Press H to look back at computer', 180, 240);
+    ctx.drawImage(bb, 0, 0, WW, WH);
+}
+
+function drawRecall() {
+    bctx.fillStyle = '#000';
+    bctx.fillRect(0, 0, SW, SH);
+    bctx.fillStyle = '#FF0000';
+    bctx.font = '11px "Courier New"';
+    bctx.fillText('you really tired so you go to sleep', 160, 200);
+    bctx.fillStyle = '#FFFF00';
+    bctx.fillText('[ Click anywhere to wake up in basement ]', 120, 260);
+    ctx.drawImage(bb, 0, 0, WW, WH);
+}
+
+function drawVictory() {
+    bctx.fillStyle = '#8B0000';
+    bctx.fillRect(0, 0, SW, SH);
+    bctx.fillStyle = '#FFFF00';
+    bctx.font = 'bold 14px "Courier New"';
+    bctx.fillText('YOU POURED WATER ON THE COMPUTER!', 60, 200);
+    bctx.fillStyle = '#FFF';
+    bctx.font = '11px "Courier New"';
+    bctx.fillText('The system short-circuited and melted.', 120, 240);
+    bctx.fillStyle = '#D3D3D3';
+    bctx.fillText('[ Click to return to desktop ]', 200, 300);
+    ctx.drawImage(bb, 0, 0, WW, WH);
+}
+
+function drawGameOver() {
+    bctx.fillStyle = '#000';
+    bctx.fillRect(0, 0, SW, SH);
+    bctx.fillStyle = '#FF0000';
+    bctx.font = 'bold 14px "Courier New"';
+    bctx.fillText('THE COMPUTER CONSUMED YOU...', 130, 200);
+    bctx.fillStyle = '#888';
+    bctx.font = '11px "Courier New"';
+    bctx.fillText('[ Click to try again ]', 220, 260);
+    ctx.drawImage(bb, 0, 0, WW, WH);
+}
+
+// ================================================================
+// ТАЧ-КНОПКИ: ПОКАЗ/СКРЫТИЕ
+// ================================================================
+function updateTouchControls() {
+    var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (!isTouch) return;
+
+    var showControls = (scene === Scene.Boss || scene === Scene.Victory || scene === Scene.GameOver);
+    var dpad = document.getElementById('dpad');
+    var btnH = document.getElementById('btnH');
+
+    if (dpad) dpad.style.display = showControls ? 'block' : 'none';
+    if (btnH) btnH.style.display = showControls ? 'block' : 'none';
+}
+
+// ================================================================
+// ГЛАВНЫЙ ЦИКЛ
+// ================================================================
+function loop() {
+    blink++;
+    updateTouchControls();
+
+    if (scene === Scene.Boss) {
+        updateBoss();
+        updateMusic();
+        renderBoss();
+        ctx.drawImage(bb, 0, 0, WW, WH);
+        ctx.fillStyle = '#FFF';
+        ctx.font = 'bold 14px "Courier New"';
+        ctx.fillText('WASD - MOVE', 20, 30);
+        ctx.fillStyle = hasBottle ? '#90EE90' : '#FFFF00';
+        ctx.fillText('ITEM: ' + (hasBottle ? 'WATER BOTTLE' : 'NONE'), 20, 55);
+        ctx.fillStyle = '#FF6347';
+        ctx.fillText('FIND BOTTLE, THEN TOUCH MONSTER', 20, 80);
+    } else if (scene === Scene.LookBehind) {
+        drawLookBehind();
+    } else if (scene === Scene.Recall) {
+        drawRecall();
+    } else if (scene === Scene.Victory) {
+        drawVictory();
+    } else if (scene === Scene.GameOver) {
+        drawGameOver();
+    } else {
+        drawDesktop();
+    }
+    requestAnimationFrame(loop);
+}
+
+// ================================================================
+// КЛИКИ
+// ================================================================
+function ptIn(x, y, r) { return x >= r.x && x <= r.x+r.w && y >= r.y && y <= r.y+r.h; }
+
+function handleClick(x, y) {
+    if (scene === Scene.Recall) {
+        resetBoss();
+        scene = Scene.Boss;
+        startBossMusic();
+        return;
+    }
+    if (scene === Scene.Victory || scene === Scene.GameOver) {
+        scene = Scene.Desktop;
+        return;
+    }
+    if (scene !== Scene.Desktop) return;
+
+    if (wMsg) { wMsg = false; return; }
+    if (wTask && handleTaskClick(x, y)) return;
+    if (wDC && handleDCClick(x, y)) return;
+    if (wGlitch && handleGlitchClick(x, y)) return;
+    if (wWap && handleWapClick(x, y)) return;
+
+    if (ptIn(x, y, icons.glitch)) {
+        wGlitch = true;
+        if (progress < 1) { progress = 1; msgText = "NEW PROCESS DETECTED.\nTask Manager is now available."; wMsg = true; }
+        return;
+    }
+    if (progress >= 1 && ptIn(x, y, icons.task)) { wTask = true; return; }
+    if (progress >= 2 && ptIn(x, y, icons.dcrypt)) { wDC = true; return; }
+    if (progress >= 3 && ptIn(x, y, icons.wap)) {
+        wWap = true;
+        if (progress < 4) { progress = 4; msgText = "MEMORY FRAGMENT FOUND.\nRecall Past is now available."; wMsg = true; }
+        return;
+    }
+    if (progress >= 4 && ptIn(x, y, icons.recall)) { scene = Scene.Recall; return; }
+}
+
+function handleTaskClick(x, y) {
+    var r = wins.task;
+    if (ptIn(x, y, {x:r.x+r.w-30, y:r.y+5, w:25, h:25})) { wTask = false; return true; }
+    if (ptIn(x, y, wins.proc)) {
+        msgText = "PROCESS TERMINATION FAILED.\n\nWhy do you want to kill me?\nDid I do something bad to you?";
+        wMsg = true;
+        if (progress < 2) progress = 2;
+        return true;
+    }
+    return false;
+}
+
+function handleDCClick(x, y) {
+    var r = wins.dcrypt;
+    if (ptIn(x, y, {x:r.x+r.w-30, y:r.y+5, w:25, h:25})) { wDC = false; return true; }
+    if (ptIn(x, y, wins.btn)) {
+        if (dcStage < dcMsgs.length - 1) { dcStage++; return true; }
+        if (progress < 3) { progress = 3; msgText = "UNKNOWN APPLICATION FOUND.\nWapValley is now available."; wMsg = true; }
+        dcStage = 0;
+        return true;
+    }
+    return false;
+}
+
+function handleGlitchClick(x, y) {
+    var r = wins.glitch;
+    if (ptIn(x, y, {x:r.x+r.w-30, y:r.y+5, w:25, h:25})) { wGlitch = false; return true; }
+    return false;
+}
+
+function handleWapClick(x, y) {
+    var r = wins.wap;
+    if (ptIn(x, y, {x:r.x+r.w-30, y:r.y+5, w:25, h:25})) { wWap = false; return true; }
+    return false;
+}
+
+function canvasCoords(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+        x: (clientX - rect.left) * (SW / rect.width),
+        y: (clientY - rect.top) * (SH / rect.height)
+    };
+}
+
+canvas.addEventListener('click', function(e) {
+    var c = canvasCoords(e.clientX, e.clientY);
+    handleClick(c.x, c.y);
+});
+
+canvas.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    var t = e.touches[0];
+    var c = canvasCoords(t.clientX, t.clientY);
+    handleClick(c.x, c.y);
+}, { passive: false });
+
+// ================================================================
+// КЛАВИАТУРА
+// ================================================================
+document.addEventListener('keydown', function(e) {
+    var k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup') input.f = true;
+    if (k === 's' || k === 'arrowdown') input.b = true;
+    if (k === 'a' || k === 'arrowleft') input.l = true;
+    if (k === 'd' || k === 'arrowright') input.r = true;
+    if (k === 'h') {
+        if (scene === Scene.Desktop) scene = Scene.LookBehind;
+        else if (scene === Scene.LookBehind) scene = Scene.Desktop;
+    }
+});
+document.addEventListener('keyup', function(e) {
+    var k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup') input.f = false;
+    if (k === 's' || k === 'arrowdown') input.b = false;
+    if (k === 'a' || k === 'arrowleft') input.l = false;
+    if (k === 'd' || k === 'arrowright') input.r = false;
+});
+
+// ================================================================
+// ТАЧ-КНОПКИ
+// ================================================================
+function bindBtn(id, fn) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('touchstart', function(e){ e.preventDefault(); fn(true); });
+    el.addEventListener('touchend', function(e){ e.preventDefault(); fn(false); });
+    el.addEventListener('touchcancel', function(e){ e.preventDefault(); fn(false); });
+    el.addEventListener('mousedown', function(){ fn(true); });
+    el.addEventListener('mouseup', function(){ fn(false); });
+    el.addEventListener('mouseleave', function(){ fn(false); });
+}
+bindBtn('bU', function(v){ input.f = v; });
+bindBtn('bD', function(v){ input.b = v; });
+bindBtn('bL', function(v){ input.l = v; });
+bindBtn('bR', function(v){ input.r = v; });
+
+document.getElementById('btnH').addEventListener('click', function() {
+    if (scene === Scene.Desktop) scene = Scene.LookBehind;
+    else if (scene === Scene.LookBehind) scene = Scene.Desktop;
+});
+
+// ================================================================
+// FULLSCREEN
+// ================================================================
+document.getElementById('btnFs').addEventListener('click', function() {
+    if (!document.fullscreenElement) {
+        var el = document.documentElement;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        else if (el.msRequestFullscreen) el.msRequestFullscreen();
+    } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else if (document.msExitFullscreen) document.msExitFullscreen();
+    }
+});
+
+// ================================================================
+// PWA: Service Worker
+// ================================================================
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js', { scope: './' })
+            .then(function (reg) {
+                console.log('[PWA] SW registered:', reg.scope);
+                reg.addEventListener('updatefound', function () {
+                    var nw = reg.installing;
+                    if (!nw) return;
+                    nw.addEventListener('statechange', function () {
+                        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('[PWA] New version available — reload to update');
+                        }
+                    });
+                });
+            })
+            .catch(function (err) { console.warn('[PWA] SW registration failed:', err); });
+    });
+}
+
+// ================================================================
+// PWA: Install prompt
+// ================================================================
+var deferredPrompt = null;
+var btnInstall = document.getElementById('btnInstall');
+
+window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    btnInstall.style.display = 'block';
+});
+
+btnInstall.addEventListener('click', function () {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(function (choice) {
+        console.log('[PWA] install choice:', choice.outcome);
+        deferredPrompt = null;
+        btnInstall.style.display = 'none';
+    });
+});
+
+window.addEventListener('appinstalled', function () {
+    console.log('[PWA] installed');
+    btnInstall.style.display = 'none';
+});
+
+// ================================================================
+// ЗАПУСК
+// ================================================================
+Promise.all([
+    loadImg('Sprites/wall.png').catch(function(){ return null; }),
+    loadImg('Sprites/monster.png').catch(function(){ return null; }),
+    loadImg('Sprites/bottle.png').catch(function(){ return null; })
+]).then(function(imgs) {
+    tex.wall = imgs[0];
+    tex.monster = imgs[1];
+    tex.bottle = imgs[2];
+
+    document.getElementById('start').addEventListener('click', function() {
+        document.getElementById('start').style.display = 'none';
+
+        // Разблокировка аудио на iOS/Android
+        try {
+            var unlock = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+            unlock.volume = 0.01;
+            unlock.play().catch(function(){});
+        } catch (e) {}
+
+        updateTouchControls();
+        loop();
+    });
+});
+
+})();
+</script>
+</body>
+</html>
