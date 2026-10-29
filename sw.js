@@ -4,18 +4,13 @@ const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './cobblestone.png',
-  './dirt.png',
-  './planks.png',
-  './creeper.png',
-  './zombie.png',
-  './sword.png',
-  './heart.png',
-  './door.png',
-  './diamond.png',
+  './Sprites/wall.png',
+  './Sprites/monster.png',
+  './Sprites/bottle.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png'
+  // Музыка (Music/part1-3.wav) кэшируется лениво при первом воспроизведении
 ];
 
 // Установка: предзагрузка ядра
@@ -61,6 +56,23 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Аудио: cache-first (ленивое кэширование)
+  if (url.pathname.match(/\.(wav|mp3|ogg)$/i)) {
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        if (cached) return cached;
+        return fetch(req).then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          }
+          return res;
+        }).catch(() => cached);
+      })
     );
     return;
   }
