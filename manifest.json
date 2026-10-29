@@ -1,7 +1,7 @@
 {
   "name": "Bipolar Disorder OS",
   "short_name": "BD OS",
-  "description": "Voxel raycaster sandbox",
+  "description": "Narrative horror game — Bipolar Disorder OS",
   "id": "/",
   "start_url": "./index.html",
   "scope": "./",
@@ -31,20 +31,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "icons/screenshot-wide.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "icons/screenshot-narrow.png",
-      "sizes": "720x1280",
-      "type": "image/png",
-      "form_factor": "narrow"
     }
   ]
 }
